@@ -7,6 +7,10 @@
 <!--    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"-->
 <!--        tools:ignore="ScopedStorage" />-->
 
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+
     <application
         android:name=".App"
         android:allowBackup="false"
@@ -56,6 +60,16 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Сервис для приёма уведомлений 2GIS -->
+        <service
+            android:name=".GisNotificationService"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
         </service>
 
         <provider

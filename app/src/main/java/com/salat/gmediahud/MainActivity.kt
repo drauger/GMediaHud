@@ -1,6 +1,12 @@
 package com.salat.gmediahud
 
+import  android.Manifest
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -42,6 +48,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -61,6 +69,8 @@ import com.salat.gmediahud.ui.theme.AppTheme
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+import android.provider.Settings
 
 private const val DEFAULT_UPDATE_RATE = 1000
 private const val DEFAULT_MEDIA_SOURCE = 6
@@ -87,6 +97,10 @@ class MainActivity : ComponentActivity() {
                     density.fontScale * uiScale
                 )
             }
+
+
+            checkPermissions()
+            checkNotificationAccess()
 
             AppTheme(
                 darkTheme = true
@@ -489,6 +503,36 @@ class MainActivity : ComponentActivity() {
                     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
             }
+        }
+    }
+
+    companion object {
+        private const val PERMISSION_REQUEST_CODE = 100
+        private val PERMISSIONS = arrayOf(
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        )
+    }
+
+    private fun checkPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val needPermissions = PERMISSIONS.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (needPermissions.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, needPermissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+            }
+        }
+    }
+
+    private fun checkNotificationAccess() {
+        val cn = ComponentName(this, GisNotificationService::class.java)
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        val enabled = flat?.contains(cn.flattenToString()) ?: false
+
+        if (!enabled) {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            Toast.makeText(this, "Включите доступ к уведомлениям для GMediaHud", Toast.LENGTH_LONG).show()
         }
     }
 }
