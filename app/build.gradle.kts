@@ -18,7 +18,7 @@ android {
         versionCode = 1420
         versionName = "1.5"
 
-        setProperty("archivesBaseName", "$versionName[$versionCode]GMediaHud")
+        setProperty("archivesBaseName", "$versionName[$versionCode]GMediaHud+Navi")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
