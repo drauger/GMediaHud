@@ -72,6 +72,10 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 import android.provider.Settings
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import java.io.File
 
 private const val DEFAULT_UPDATE_RATE = 1000
 private const val DEFAULT_MEDIA_SOURCE = 6
@@ -79,6 +83,10 @@ private const val DEFAULT_NOTIFICATION_VOLUME = 90
 private const val SUCHII_ES_PROVODNIK = "com.estrongs.android.pop"
 
 class MainActivity : ComponentActivity() {
+
+    private var updateInfo by mutableStateOf<UpdateInfo?>(null)
+    private var downloadProgress by mutableIntStateOf(-1)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -99,6 +107,57 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            updateInfo?.let { info ->
+                AlertDialog(
+                    onDismissRequest = { updateInfo = null },
+                    title = { Text("Доступно обновление ${info.version}") },
+                    text = { Text(info.changelog) },
+                    confirmButton = {
+                        BaseButton(
+                            title = "Обновить",
+                            onClick = {
+                                updateInfo = null
+                                startDownload(info)
+                            }
+                        )
+                    },
+                    dismissButton = {
+                        BaseButton(
+                            title = "Позже",
+                            onClick = { updateInfo = null }
+                        )
+                    }
+                )
+            }
+
+            if (downloadProgress >= 0) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.colors.surfaceBackground)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "Загрузка... $downloadProgress%",
+                            style = AppTheme.typography.screenTitle,
+                            color = AppTheme.colors.contentPrimary
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadProgress / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = AppTheme.colors.contentAccent,
+                            trackColor = AppTheme.colors.sliderPassive
+                        )
+                    }
+                }
+            }
 
             checkPermissions()
             checkNotificationAccess()
@@ -122,6 +181,7 @@ class MainActivity : ComponentActivity() {
                 var esExplorerStub by remember { mutableStateOf(false) }
                 var filterByAudioSource by remember { mutableStateOf(false) }
                 var gisNotificationsEnabled by remember { mutableStateOf(false) }
+                var arNotificationsEnabled by remember { mutableStateOf(false) }
                 var gisSoundEnabled by remember { mutableStateOf(false) }
                 var gisLogsEnabled by remember { mutableStateOf(false) }
                 LaunchedEffect(true) {
@@ -145,6 +205,11 @@ class MainActivity : ComponentActivity() {
                         ds.getValueFlow(Prefs.GIS_NOTIFICATIONS_ENABLED).firstOrNull() ?: false
                     getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
                         .edit().putBoolean("gis_enabled", gisNotificationsEnabled).apply()
+
+                    arNotificationsEnabled =
+                        ds.getValueFlow(Prefs.AR_NOTIFICATIONS_ENABLED).firstOrNull() ?: false
+                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                        .edit().putBoolean("ar_enabled", arNotificationsEnabled).apply()
 
                     gisSoundEnabled =
                         ds.getValueFlow(Prefs.GIS_SOUND_ENABLED).firstOrNull() ?: false
@@ -493,6 +558,37 @@ class MainActivity : ComponentActivity() {
 
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
+                                    title = "Камеры",
+                                    subtitle = "Показывать предупреждения на HUD",
+                                    value = arNotificationsEnabled,
+                                    enable = true,
+                                    groupDivider = false,
+                                    onChange = { enabled ->
+                                        arNotificationsEnabled = enabled
+                                        scope.launch {
+                                            ds.saveValue(Prefs.AR_NOTIFICATIONS_ENABLED, enabled)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                                            .edit().putBoolean("ar_enabled", enabled).apply()
+
+                                        if (enabled) {
+                                            val cn = ComponentName(this@MainActivity, GisNotificationService::class.java)
+                                            val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                                            if (flat == null || !flat.contains(cn.flattenToString())) {
+                                                Toast.makeText(this@MainActivity,
+                                                    "Включите доступ к уведомлениям",
+                                                    Toast.LENGTH_LONG).show()
+                                                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                            }
+                                        }
+                                    }
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                RenderSwitcher(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
                                     title = "Звук навигации",
                                     subtitle = "Звуковое предупреждение о манёвре",
                                     value = gisSoundEnabled,
@@ -527,6 +623,13 @@ class MainActivity : ComponentActivity() {
                                         getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
                                             .edit().putBoolean("gis_logs_enabled", enabled).apply()
                                     }
+                                )
+
+                                Spacer(Modifier.height(24.dp))
+
+                                BaseButton(
+                                    title = "Проверить обновления",
+                                    onClick = { checkUpdates() }
                                 )
 
                                 /*if (needFilePermission) {
@@ -623,6 +726,38 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             Toast.makeText(this, "Включите доступ к уведомлениям для GMediaHud", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun checkUpdates() {
+        UpdateChecker.checkForUpdate(
+            this,
+            "drauger",
+            "GMediaHud",
+            object : UpdateChecker.UpdateCallback {
+                override fun onUpdateAvailable(info: UpdateInfo) {
+                    updateInfo = info
+                }
+                override fun onNoUpdate() {}
+                override fun onError(error: String) {}
+            }
+        )
+    }
+
+    private fun startDownload(info: UpdateInfo) {
+        downloadProgress = 0
+        UpdateDownloader.download(this, info, object : UpdateDownloader.DownloadCallback {
+            override fun onProgress(percent: Int) {
+                downloadProgress = percent
+            }
+            override fun onComplete(apkFile: File) {
+                downloadProgress = -1
+                UpdateDownloader.installApk(this@MainActivity, apkFile)
+            }
+            override fun onError(error: String) {
+                downloadProgress = -1
+                Toast.makeText(this@MainActivity, "Ошибка: $error", Toast.LENGTH_LONG).show()
+            }
+        })
     }
 }
 

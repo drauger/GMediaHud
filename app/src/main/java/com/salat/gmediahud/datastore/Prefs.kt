@@ -12,7 +12,7 @@ object Prefs {
     val NOTIFICATION_VOLUME = intPreferencesKey("NOTIFICATION_VOLUME2")
     val FILTER_BY_AUDIO_SOURCE = booleanPreferencesKey("FILTER_BY_AUDIO_SOURCE")
     val GIS_NOTIFICATIONS_ENABLED = booleanPreferencesKey("GIS_NOTIFICATIONS_ENABLED")
+    val AR_NOTIFICATIONS_ENABLED = booleanPreferencesKey("AR_NOTIFICATIONS_ENABLED")
     val GIS_SOUND_ENABLED = booleanPreferencesKey("GIS_SOUND_ENABLED")
-
     val GIS_LOGS_ENABLED = booleanPreferencesKey("GIS_LOGS_ENABLED")
 }

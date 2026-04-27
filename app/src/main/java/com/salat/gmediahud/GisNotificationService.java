@@ -15,7 +15,6 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-import android.util.Log;
 import android.widget.Toast;
 
 import java.io.File;
@@ -31,7 +30,8 @@ import java.util.Set;
 public class GisNotificationService extends NotificationListenerService {
 //    private static final String TAG = "GisNotificationService";
     private static final String PREFS_NAME = "GisServicePrefs";
-    private static final String KEY_ENABLED = "gis_enabled";
+    private static final String KEY_GIS_ENABLED = "gis_enabled";
+    private static final String KEY_AR_ENABLED = "ar_enabled";
     private static final String KEY_SOUND = "gis_sound_enabled";
     private static final String KEY_LOGS = "gis_logs_enabled";
 
@@ -47,9 +47,13 @@ public class GisNotificationService extends NotificationListenerService {
         NAV_PACKAGES.add(PACKAGE_2GIS);
         NAV_PACKAGES.add(PACKAGE_YANDEX_MAPS);
         NAV_PACKAGES.add(PACKAGE_YANDEX_NAVIGATOR);
-        NAV_PACKAGES.add(PACKAGE_ANTIRADAR);
-        NAV_PACKAGES.add(PACKAGE_HUDFREE);
-        NAV_PACKAGES.add(PACKAGE_HUDPREMIUM);
+    }
+
+    private static final Set<String> AR_PACKAGES = new HashSet<>();
+    static {
+        AR_PACKAGES.add(PACKAGE_ANTIRADAR);
+        AR_PACKAGES.add(PACKAGE_HUDFREE);
+        AR_PACKAGES.add(PACKAGE_HUDPREMIUM);
     }
 
     private static final int MAX_ICONS = 100;
@@ -71,24 +75,6 @@ public class GisNotificationService extends NotificationListenerService {
             startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                     .setData(Uri.parse("package:" + getPackageName())));
         }
-
-        // Проверка при старте
-        UpdateChecker.checkForUpdate(this, "drauger", "GMediaHud", new UpdateChecker.UpdateCallback() {
-            @Override
-            public void onUpdateAvailable(UpdateInfo info) {
-                showUpdateDialog(info);
-            }
-
-            @Override
-            public void onNoUpdate() {
-//                Log.d("Main", "No update available");
-            }
-
-            @Override
-            public void onError(String error) {
-//                Log.e("Main", "Update check error: " + error);
-            }
-        });
 
         initDirectory();
         activeGisNotifications.clear();
@@ -112,16 +98,13 @@ public class GisNotificationService extends NotificationListenerService {
         notificationCounter = 0;
     }
 
-    private boolean isGisEnabled() {
-        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_ENABLED, false);
-    }
-
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
-        if (!isGisEnabled()) return;
-        if (!NAV_PACKAGES.contains(sbn.getPackageName())) return;
-
         String packageName = sbn.getPackageName();
+
+        if (!(NAV_PACKAGES.contains(packageName) || AR_PACKAGES.contains(packageName))) return;
+        if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false) && NAV_PACKAGES.contains(packageName)) return;
+        if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_AR_ENABLED, false) && AR_PACKAGES.contains(packageName)) return;
 
         Notification notification = sbn.getNotification();
         Bundle extras = notification.extras;
@@ -169,10 +152,6 @@ public class GisNotificationService extends NotificationListenerService {
                 }
                 break;
         }
-
-//        if (PACKAGE_2GIS.equals(packageName)) {
-//        } else {
-//        }
 
         if (title.equals(lastNotification) || distance > 500) return;
 
@@ -230,9 +209,9 @@ public class GisNotificationService extends NotificationListenerService {
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-        if (!isGisEnabled()) return;
+//        if (!isGisEnabled()) return;
 //        if (!sbn.getPackageName().equals(GIS_PACKAGE)) return;
-        if (!NAV_PACKAGES.contains(sbn.getPackageName())) return;
+//        if (!NAV_PACKAGES.contains(sbn.getPackageName())) return;
 
         String key = sbn.getKey();
         String tag = activeGisNotifications.remove(key);
@@ -464,38 +443,56 @@ public class GisNotificationService extends NotificationListenerService {
     }
 
     // update
-    private void showUpdateDialog(UpdateInfo info) {
-        new AlertDialog.Builder(this)
-                .setTitle("Доступно обновление " + info.version)
-                .setMessage(info.changelog)
-                .setPositiveButton("Обновить", (d, w) -> startDownload(info))
-                .setNegativeButton("Позже", null)
-                .show();
-    }
+//    private void checkUpdates() {
+//        UpdateChecker.checkForUpdate(this, "drauger", "GMediaHud", new UpdateChecker.UpdateCallback() {
+//            @Override
+//            public void onUpdateAvailable(UpdateInfo info) {
+//                showUpdateDialog(info);
+//            }
+//
+//            @Override
+//            public void onNoUpdate() {
+//  //                Log.d("Main", "No update available");
+//            }
+//
+//            @Override
+//            public void onError(String error) {
+//  //                Log.e("Main", "Update check error: " + error);
+//            }
+//        });
+//    }
+//    private void showUpdateDialog(UpdateInfo info) {
+//        new AlertDialog.Builder(this)
+//                .setTitle("Доступно обновление " + info.version)
+//                .setMessage(info.changelog)
+//                .setPositiveButton("Обновить", (d, w) -> startDownload(info))
+//                .setNegativeButton("Позже", null)
+//                .show();
+//    }
 
-    private void startDownload(UpdateInfo info) {
-        ProgressDialog progress = new ProgressDialog(this);
-        progress.setMessage("Загрузка...");
-        progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-        progress.show();
-
-        UpdateDownloader.download(this, info, new UpdateDownloader.DownloadCallback() {
-            @Override
-            public void onProgress(int percent) {
-                progress.setProgress(percent);
-            }
-
-            @Override
-            public void onComplete(File apkFile) {
-                progress.dismiss();
-                UpdateDownloader.installApk(GisNotificationService.this, apkFile);
-            }
-
-            @Override
-            public void onError(String error) {
-                progress.dismiss();
-                Toast.makeText(GisNotificationService.this, "Ошибка: " + error, Toast.LENGTH_LONG).show();
-            }
-        });
-    }
+//    private void startDownload(UpdateInfo info) {
+//        ProgressDialog progress = new ProgressDialog(this);
+//        progress.setMessage("Загрузка...");
+//        progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+//        progress.show();
+//
+//        UpdateDownloader.download(this, info, new UpdateDownloader.DownloadCallback() {
+//            @Override
+//            public void onProgress(int percent) {
+//                progress.setProgress(percent);
+//            }
+//
+//            @Override
+//            public void onComplete(File apkFile) {
+//                progress.dismiss();
+//                UpdateDownloader.installApk(GisNotificationService.this, apkFile);
+//            }
+//
+//            @Override
+//            public void onError(String error) {
+//                progress.dismiss();
+//                Toast.makeText(GisNotificationService.this, "Ошибка: " + error, Toast.LENGTH_LONG).show();
+//            }
+//        });
+//    }
 }
