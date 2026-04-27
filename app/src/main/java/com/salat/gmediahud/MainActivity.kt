@@ -2,6 +2,7 @@ package com.salat.gmediahud
 
 import  android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -120,6 +121,9 @@ class MainActivity : ComponentActivity() {
                 var unknownArtistStub by remember { mutableStateOf(false) }
                 var esExplorerStub by remember { mutableStateOf(false) }
                 var filterByAudioSource by remember { mutableStateOf(false) }
+                var gisNotificationsEnabled by remember { mutableStateOf(false) }
+                var gisSoundEnabled by remember { mutableStateOf(false) }
+                var gisLogsEnabled by remember { mutableStateOf(false) }
                 LaunchedEffect(true) {
                     updateRate =
                         ds.getValueFlow(Prefs.UPDATE_RATE).firstOrNull() ?: DEFAULT_UPDATE_RATE
@@ -136,6 +140,21 @@ class MainActivity : ComponentActivity() {
                         ds.getValueFlow(Prefs.UNKNOWN_ARTIST_STUB).firstOrNull() ?: false
                     filterByAudioSource =
                         ds.getValueFlow(Prefs.FILTER_BY_AUDIO_SOURCE).firstOrNull() ?: false
+
+                    gisNotificationsEnabled =
+                        ds.getValueFlow(Prefs.GIS_NOTIFICATIONS_ENABLED).firstOrNull() ?: false
+                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                        .edit().putBoolean("gis_enabled", gisNotificationsEnabled).apply()
+
+                    gisSoundEnabled =
+                        ds.getValueFlow(Prefs.GIS_SOUND_ENABLED).firstOrNull() ?: false
+                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                        .edit().putBoolean("gis_sound_enabled", gisSoundEnabled).apply()
+
+                    gisLogsEnabled =
+                        ds.getValueFlow(Prefs.GIS_LOGS_ENABLED).firstOrNull() ?: false
+                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                        .edit().putBoolean("gis_logs_enabled", gisLogsEnabled).apply()
                 }
                 LaunchedEffect(true) {
                     if (!esExplorerStub) {
@@ -439,6 +458,76 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
 
+                                Spacer(Modifier.height(12.dp))
+
+                                RenderSwitcher(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    title = "Навигация",
+                                    subtitle = "Показывать манёвры на HUD",
+                                    value = gisNotificationsEnabled,
+                                    enable = true,
+                                    groupDivider = false,
+                                    onChange = { enabled ->
+                                        gisNotificationsEnabled = enabled
+                                        scope.launch {
+                                            ds.saveValue(Prefs.GIS_NOTIFICATIONS_ENABLED, enabled)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                                            .edit().putBoolean("gis_enabled", enabled).apply()
+
+                                        if (enabled) {
+                                            val cn = ComponentName(this@MainActivity, GisNotificationService::class.java)
+                                            val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                                            if (flat == null || !flat.contains(cn.flattenToString())) {
+                                                Toast.makeText(this@MainActivity,
+                                                    "Включите доступ к уведомлениям",
+                                                    Toast.LENGTH_LONG).show()
+                                                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                            }
+                                        }
+                                    }
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                RenderSwitcher(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    title = "Звук навигации",
+                                    subtitle = "Звуковое предупреждение о манёвре",
+                                    value = gisSoundEnabled,
+                                    enable = true,
+                                    groupDivider = false,
+                                    onChange = { enabled ->
+                                        gisSoundEnabled = enabled
+                                        scope.launch {
+                                            ds.saveValue(Prefs.GIS_SOUND_ENABLED, enabled)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                                            .edit().putBoolean("gis_sound_enabled", enabled).apply()
+                                    }
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                RenderSwitcher(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    title = "Лог подсказок навигации",
+                                    subtitle = "Сохранять все подсказки в файл",
+                                    value = gisLogsEnabled,
+                                    enable = true,
+                                    groupDivider = false,
+                                    onChange = { enabled ->
+                                        gisLogsEnabled = enabled
+                                        scope.launch {
+                                            ds.saveValue(Prefs.GIS_LOGS_ENABLED, enabled)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
+                                            .edit().putBoolean("gis_logs_enabled", enabled).apply()
+                                    }
+                                )
 
                                 /*if (needFilePermission) {
                                     Spacer(Modifier.height(20.dp))

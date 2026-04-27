@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,25 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     id(libs.plugins.googleServices.get().pluginId)
     id(libs.plugins.firebase.crashlytics.get().pluginId)
+}
+
+val versionCodeFile = file("versionCode.properties")
+
+val currentVersionCode = if (versionCodeFile.exists()) {
+    Properties().apply { load(versionCodeFile.inputStream()) }
+        .getProperty("versionCode", "1").toInt()
+} else {
+    1420
+}
+
+val newVersionCode = currentVersionCode + 1
+
+// Сохраняем обратно
+versionCodeFile.outputStream().use { stream ->
+    Properties().apply {
+        setProperty("versionCode", newVersionCode.toString())
+        store(stream, null)
+    }
 }
 
 android {
@@ -15,7 +36,7 @@ android {
         applicationId = "com.salat.gmediahud"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1420
+        versionCode = newVersionCode
         versionName = "1.5"
 
         setProperty("archivesBaseName", "$versionName[$versionCode]GMediaHud+Navi")
