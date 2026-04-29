@@ -528,7 +528,7 @@ class MainActivity : ComponentActivity() {
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                     title = "Навигация",
-                                    subtitle = "Показывать манёвры на HUD",
+                                    subtitle = "Показывать манёвры на панели приборов",
                                     value = gisNotificationsEnabled,
                                     enable = true,
                                     groupDivider = false,
@@ -559,7 +559,7 @@ class MainActivity : ComponentActivity() {
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                     title = "Камеры",
-                                    subtitle = "Показывать предупреждения на HUD",
+                                    subtitle = "Показывать предупреждения на панели приборов",
                                     value = arNotificationsEnabled,
                                     enable = true,
                                     groupDivider = false,
@@ -605,7 +605,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
 
-                                Spacer(Modifier.height(12.dp))
+                                /*Spacer(Modifier.height(12.dp))
 
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
@@ -623,14 +623,17 @@ class MainActivity : ComponentActivity() {
                                         getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
                                             .edit().putBoolean("gis_logs_enabled", enabled).apply()
                                     }
-                                )
+                                )*/
 
-                                Spacer(Modifier.height(24.dp))
+                                /*Spacer(Modifier.height(24.dp))
 
                                 BaseButton(
                                     title = "Проверить обновления",
-                                    onClick = { checkUpdates() }
-                                )
+                                    onClick = {
+                                        Toast.makeText(this@MainActivity, "Проверка...", Toast.LENGTH_SHORT).show()
+                                        checkUpdates()
+                                    }
+                                )*/
 
                                 /*if (needFilePermission) {
                                     Spacer(Modifier.height(20.dp))
@@ -729,18 +732,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkUpdates() {
-        UpdateChecker.checkForUpdate(
-            this,
-            "drauger",
-            "GMediaHud",
-            object : UpdateChecker.UpdateCallback {
-                override fun onUpdateAvailable(info: UpdateInfo) {
-                    updateInfo = info
+        try {
+            UpdateChecker.checkForUpdate(
+                this,
+                "drauger",
+                "GMediaHud",
+                object : UpdateChecker.UpdateCallback {
+                    override fun onUpdateAvailable(info: UpdateInfo) {
+                        updateInfo = info
+                    }
+                    override fun onNoUpdate() {
+                        Toast.makeText(this@MainActivity, "Обновлений нет", Toast.LENGTH_SHORT).show()
+                    }
+                    override fun onError(error: String) {
+                        Toast.makeText(this@MainActivity, "Ошибка: $error", Toast.LENGTH_LONG).show()
+                    }
                 }
-                override fun onNoUpdate() {}
-                override fun onError(error: String) {}
-            }
-        )
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this@MainActivity, "Проверка не удалась", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun startDownload(info: UpdateInfo) {

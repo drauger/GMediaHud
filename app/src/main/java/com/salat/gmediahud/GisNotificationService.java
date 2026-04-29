@@ -1,11 +1,11 @@
-package com.salat.gmediahud;  // Изменён package
+package com.salat.gmediahud;
 
-import android.app.AlertDialog;
 import android.app.Notification;
-import android.app.ProgressDialog;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
@@ -23,9 +23,13 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
+
+import android.content.Context;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class GisNotificationService extends NotificationListenerService {
 //    private static final String TAG = "GisNotificationService";
@@ -34,38 +38,47 @@ public class GisNotificationService extends NotificationListenerService {
     private static final String KEY_AR_ENABLED = "ar_enabled";
     private static final String KEY_SOUND = "gis_sound_enabled";
     private static final String KEY_LOGS = "gis_logs_enabled";
+    private static final String ICONS_FOLDER = "GIS_Icons";
 
     private static final String PACKAGE_2GIS = "ru.dublgis.dgismobile";
-    private static final String PACKAGE_YANDEX_MAPS = "ru.yandex.yandexmaps";
-    private static final String PACKAGE_YANDEX_NAVIGATOR = "ru.yandex.yandexnavi";
-    private static final String PACKAGE_ANTIRADAR = "air.StrelkaSDFREE";
-    private static final String PACKAGE_HUDFREE = "air.StrelkaHUDFREE";
-    private static final String PACKAGE_HUDPREMIUM = "air.StrelkaHUDPREMIUM";
+//    private static final String PACKAGE_YANDEX_MAPS = "ru.yandex.yandexmaps";
+//    private static final String PACKAGE_YANDEX_NAVIGATOR = "ru.yandex.yandexnavi";
+//    private static final String PACKAGE_ANTIRADAR = "air.StrelkaSDFREE";
+//    private static final String PACKAGE_HUDFREE = "air.StrelkaHUDFREE";
+//    private static final String PACKAGE_HUDPREMIUM = "air.StrelkaHUDPREMIUM";
 
-    private static final Set<String> NAV_PACKAGES = new HashSet<>();
-    static {
-        NAV_PACKAGES.add(PACKAGE_2GIS);
-        NAV_PACKAGES.add(PACKAGE_YANDEX_MAPS);
-        NAV_PACKAGES.add(PACKAGE_YANDEX_NAVIGATOR);
-    }
+//    private static final Set<String> NAV_PACKAGES = new HashSet<>();
+//    static {
+//        NAV_PACKAGES.add(PACKAGE_2GIS);
+//        NAV_PACKAGES.add(PACKAGE_YANDEX_MAPS);
+//        NAV_PACKAGES.add(PACKAGE_YANDEX_NAVIGATOR);
+//    }
 
-    private static final Set<String> AR_PACKAGES = new HashSet<>();
-    static {
-        AR_PACKAGES.add(PACKAGE_ANTIRADAR);
-        AR_PACKAGES.add(PACKAGE_HUDFREE);
-        AR_PACKAGES.add(PACKAGE_HUDPREMIUM);
-    }
+//    private static final Set<String> AR_PACKAGES = new HashSet<>();
+//    static {
+//        AR_PACKAGES.add(PACKAGE_ANTIRADAR);
+//        AR_PACKAGES.add(PACKAGE_HUDFREE);
+//        AR_PACKAGES.add(PACKAGE_HUDPREMIUM);
+//    }
 
-    private static final int MAX_ICONS = 100;
+    private static final int MAX_ICONS = 200;
     private static final String ACTION_SHOW = "com.salat.gmediahud.SHOW";
     private static final String ACTION_HIDE = "com.salat.gmediahud.HIDE";
     private static final String TARGET_PACKAGE = "com.salat.gmediahud";
 
-    private File gisDir;
+    private int DISTANCE_LIMIT = 500;
+
+    private static File gisDir;
     private final Map<String, String> activeGisNotifications = new HashMap<>();
     private int notificationCounter = 0;
-    private String lastNotification;
+
+    private int distance = 0;
+    private String title = " ";
+    private String subtitle = " ";
     private String lastTarget;
+    private Bitmap iconBitmap = null;
+
+    private NavigationReceiver navigationReceiver;
 
     @Override
     public void onCreate() {
@@ -76,13 +89,15 @@ public class GisNotificationService extends NotificationListenerService {
                     .setData(Uri.parse("package:" + getPackageName())));
         }
 
+        registerNavigationReceiver();
+
         initDirectory();
         activeGisNotifications.clear();
         notificationCounter = 0;
     }
 
     private void initDirectory() {
-        gisDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GIS_Icons");
+        gisDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ICONS_FOLDER);
 
         if (!gisDir.exists()) {
             if (!gisDir.mkdirs())
@@ -99,119 +114,193 @@ public class GisNotificationService extends NotificationListenerService {
     }
 
     @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (navigationReceiver != null) {
+            try {
+                unregisterReceiver(navigationReceiver);
+            } catch (Exception e) {
+//                Log.e(TAG, "Error unregistering receiver", e);
+            }
+            navigationReceiver = null;
+        }
+        NavigationReceiver.setListener(null);
+    }
+
+    private void registerNavigationReceiver() {
+        navigationReceiver = new NavigationReceiver();
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(NavigationReceiver.ACTION_YANDEX_MANEUVER);
+        filter.addAction(NavigationReceiver.ACTION_YANDEX_NEXT_TEXT);
+        filter.addAction(NavigationReceiver.ACTION_YANDEX_NEXT_STREET);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_SPEEDLIMIT);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_ARRIVAL);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_DISTANCE);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_TIME);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_NAV_ACTIVE);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_ROADCAMERA);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_TRAFFICLIGHT);
+//        filter.addAction(NavigationReceiver.ACTION_YANDEX_ROUTE_POLYLINE);
+//        filter.addAction(NavigationReceiver.ACTION_ANTIRADAR_UPDATE);
+        filter.addAction(NavigationReceiver.ACTION_HUDSPEED_UPDATE);
+
+        NavigationReceiver.setListener(new NavigationReceiver.NavigationListener() {
+            @Override
+            public void onYandexManeuver(String type, Bitmap bitmap) {
+                if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false)) return;
+
+                // Тип манёвра + иконка
+                if (bitmap != null) {
+                    iconBitmap = bitmap;
+                }
+            }
+
+            @Override
+            public void onYandexNextText(String text) {
+                if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false)) return;
+
+                // Расстояние до манёвра, например "300 м"
+                subtitle = text;
+                distance = Integer.parseInt((subtitle.split(" ", 2))[0].trim());
+
+                if (distance <= DISTANCE_LIMIT && !subtitle.contains("км"))
+                    createNotification("ya");
+            }
+
+            @Override
+            public void onYandexNextStreet(String street) {
+                if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false)) return;
+
+                // Название улицы/дороги
+                title = street;
+            }
+
+//            @Override
+//            public void onYandexSpeedLimit(String limit) {
+//                // Ограничение скорости
+//            }
+//
+//            @Override
+//            public void onYandexArrival(String arrival) {
+//                // Время прибытия
+//            }
+//
+//            @Override
+//            public void onYandexDistance(String distance) {
+//                // Оставшееся расстояние до пункта назначения
+//            }
+//
+//            @Override
+//            public void onYandexTime(String time) {
+//                // Оставшееся время в пути
+//            }
+//
+//            @Override
+//            public void onYandexNavActive(boolean isActive) {
+//                // Состояние навигации (диагностика)
+//            }
+//
+//            @Override
+//            public void onYandexRoadCamera(String cameraId, String distance, Bitmap icon) {
+//                // Дорожная камера
+//            }
+//
+//            @Override
+//            public void onYandexTrafficLight(int id, boolean visible, String color, String countdown, Bitmap arrowBitmap, String arrowDirection, long timestamp) {
+//                // Светофор: color = "red"/"green"/"yellow", countdown = "15"
+//            }
+//
+//            @Override
+//            public void onYandexRoutePolyline(boolean active, String routeId, double[] lats, double[] lons, int count) {
+//                // Полилиния маршрута
+//            }
+
+            @Override
+            public void onHudSpeedUpdate(boolean hasCamera, boolean hasGps, int distance, int limit1, int limit2, int camType, int camFlag) {
+                if (hasCamera) {
+                    if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_AR_ENABLED, false)) return;
+
+                    String title = " ";
+
+                    switch (camFlag) {
+                        case 1:
+                            title = "Камера в лицо";
+                            break;
+                        case 3:
+                            title = "Камера в спину";
+                            break;
+                        case 4:
+                            title = "Камера <>";
+                            break;
+                        default:
+//                            title = " ";
+                    }
+
+                    if (limit1 > 0)
+                        title += " на " + limit1;
+
+                    String tag = "antiradar";
+                    String iconPath = "";
+
+                    String iconFileName = "cam_type_" + camType + ".png";
+                    File iconFile = new File(gisDir, iconFileName);
+
+                    if (!iconFile.exists()) {
+                        copyIcon(getApplicationContext(), iconFileName, iconFileName);
+                    }
+
+                    String params = "queue=0,warning=";
+                    params += 0;    //getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_SOUND, false) ? 1 : 0;
+                    params += ",source=6,toast=0,tag=";
+                    params += tag;
+
+                    // Отправляем broadcast в GMediaHUD
+                    sendShowCommand(title, distance + " м", iconFile.getAbsolutePath(), 5, params);
+                }
+                else {
+                    sendHideCommand("antiradar");
+                }
+            }
+        });
+
+        registerReceiver(navigationReceiver, filter);
+    }
+
+    @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         String packageName = sbn.getPackageName();
 
-        if (!(NAV_PACKAGES.contains(packageName) || AR_PACKAGES.contains(packageName))) return;
-        if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false) && NAV_PACKAGES.contains(packageName)) return;
-        if (!getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_AR_ENABLED, false) && AR_PACKAGES.contains(packageName)) return;
+        if (!PACKAGE_2GIS.equals(packageName) || !getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_GIS_ENABLED, false)) return;
 
         Notification notification = sbn.getNotification();
         Bundle extras = notification.extras;
 
         String text = extras.getCharSequence(Notification.EXTRA_TEXT, "").toString();
-        String subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT, "").toString();
-        String bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT, "").toString();
+        String[] parts = (text.split("\n", 2))[0].trim().split("\\s*?[-\\u2013\\u2014]\\s*?", 2);
+        subtitle = parts[0].trim();
+        title = parts.length > 1 ? parts[1].trim() : " ";
+        distance = Integer.parseInt((subtitle.split(" ", 2))[0].trim());
 
-        String target = " ";
-        int distance = 0;
+        if (distance > DISTANCE_LIMIT || subtitle.contains("км")) return;
 
-        String title = " ";
-        String subtitle = " ";
-
-        switch (packageName) {
-            case PACKAGE_2GIS:
-                // 2GIS: text содержит манёвр и расстояние через \n
-                String[] parts = text.split("\n", 2);
-                title = parts[0].trim();
-
-                parts = title.split("\\s*?[-\\u2013\\u2014]\\s*?", 2);
-                subtitle = parts[0].trim();
-                target = parts.length > 1 ? parts[1].trim() : " ";
-
-                distance = Integer.parseInt((subtitle.split(" ", 2))[0].trim());
-                break;
-            case PACKAGE_YANDEX_MAPS:
-            case PACKAGE_YANDEX_NAVIGATOR:
-            case PACKAGE_ANTIRADAR:
-            case PACKAGE_HUDFREE:
-            case PACKAGE_HUDPREMIUM:
-                // Яндекс: обычно title = манёвр, text = расстояние/улица
-                title = extras.getCharSequence(Notification.EXTRA_TITLE, "").toString();
-                if (title.isEmpty()) {
-                    title = text.split("\n")[0].trim();
-                }
-                subtitle = text;
-
-                if (!subText.isEmpty()) {
-                    subtitle += " " + subText;
-                }
-
-                if (!bigText.isEmpty()) {
-                    subtitle += " " + bigText;
-                }
-                break;
-        }
-
-        if (title.equals(lastNotification) || distance > 500) return;
-
-        lastNotification = title;
-        title = target;
-
-        int warning = 0;
-
-        if (target != lastTarget) {
-            warning = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_SOUND, false) ? 1 : 0;
-            lastTarget = target;
-        }
-
-        // Получаем изображение
-        Bitmap picture = extras.getParcelable(Notification.EXTRA_PICTURE);
-        Bitmap iconBitmap = null;
-
-        if (picture != null) {
-            iconBitmap = picture;
-        } else {
-            Icon largeIcon = notification.getLargeIcon();
-            if (largeIcon != null) {
-                Drawable drawable = largeIcon.loadDrawable(this);
-                if (drawable != null) {
-                    iconBitmap = drawableToBitmap(drawable);
-                }
+        Icon largeIcon = notification.getLargeIcon();
+        if (largeIcon != null) {
+            Drawable drawable = largeIcon.loadDrawable(this);
+            if (drawable != null) {
+                iconBitmap = drawableToBitmap(drawable);
             }
         }
 
-        // Получаем имя файла и сохраняем
-        String iconFileName = getIconFileName(title, iconBitmap);
-        File iconFile = new File(gisDir, iconFileName);
+        createNotification("2gis");
 
-        if (!iconFile.exists() && iconBitmap != null && !iconBitmap.isRecycled()) {
-            enforceMaxIconsLimit();
-            saveBitmap(iconBitmap, iconFile);
-        }
-
-        String key = sbn.getKey();
-        String tag = "gis" + (++notificationCounter);
-        activeGisNotifications.put(key, tag);
-
-        String params = "queue=0,warning=";
-        params += warning;
-        params += ",source=6,toast=0,tag=";
-        params += tag;
-
-        // Отправляем broadcast в GMediaHUD
-        sendShowCommand(title, subtitle, iconFile.getAbsolutePath(), params);
-
-        // Записываем все extras в лог-файл
         if (getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_LOGS, false))
             logAllExtras(sbn, notification, extras);
     }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-//        if (!isGisEnabled()) return;
-//        if (!sbn.getPackageName().equals(GIS_PACKAGE)) return;
-//        if (!NAV_PACKAGES.contains(sbn.getPackageName())) return;
+        if (!PACKAGE_2GIS.equals(sbn.getPackageName())) return;
 
         String key = sbn.getKey();
         String tag = activeGisNotifications.remove(key);
@@ -221,13 +310,44 @@ public class GisNotificationService extends NotificationListenerService {
         }
     }
 
-    private void sendShowCommand(String title, String subtitle, String iconPath, String params) {
+    private void createNotification(String key) {
+        int warning = 0;
+
+        if (!title.equals(lastTarget)) {
+            warning = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(KEY_SOUND, false) ? 1 : 0;
+            lastTarget = title;
+        }
+
+        // Получаем имя файла и сохраняем
+        String iconFileName = getIconFileName(iconBitmap);
+        File iconFile = new File(gisDir, iconFileName);
+
+        if (!iconFile.exists() && iconBitmap != null && !iconBitmap.isRecycled()) {
+            enforceMaxIconsLimit();
+            if (key.equals("ya"))
+                iconBitmap = addBackgroundToBitmap(iconBitmap, Color.rgb(0, 132, 80));
+            saveBitmap(iconBitmap, iconFile);
+        }
+
+        String tag = key + (++notificationCounter);
+        activeGisNotifications.put(key, tag);
+
+        String params = "queue=0,warning=";
+        params += warning;
+        params += ",source=6,toast=0,tag=";
+        params += tag;
+
+        // Отправляем broadcast в GMediaHUD
+        sendShowCommand(title, subtitle, iconFile.getAbsolutePath(), 10, params);
+    }
+
+    private void sendShowCommand(String title, String subtitle, String iconPath, int duration, String params) {
         Intent intent = new Intent(ACTION_SHOW);
         intent.setPackage(TARGET_PACKAGE);
         intent.putExtra("title", title);
         intent.putExtra("subtitle", subtitle);
         intent.putExtra("art", iconPath);
-        intent.putExtra("duration", 100);
+        intent.putExtra("duration", duration);
         intent.putExtra("params", params);
 
         sendBroadcast(intent);
@@ -240,7 +360,120 @@ public class GisNotificationService extends NotificationListenerService {
         sendBroadcast(intent);
     }
 
-//     Метод для записи всех extras в файл
+//     ============ Вспомогательные методы ============
+
+    private String getIconFileName(Bitmap bitmap) {
+        if (bitmap == null) {
+            return "nav_default.png";
+        }
+
+        String bitmapHash = getBitmapHash(bitmap);
+        return "nav_" + bitmapHash + ".png";
+    }
+
+    private String getBitmapHash(Bitmap bitmap) {
+        try {
+            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, 32, 32, false);
+            ByteBuffer buffer = ByteBuffer.allocate(scaled.getByteCount());
+            scaled.copyPixelsToBuffer(buffer);
+            byte[] pixels = buffer.array();
+
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(pixels);
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                sb.append(String.format("%02x", digest[i]));
+            }
+
+            if (scaled != bitmap) {
+                scaled.recycle();
+            }
+
+            return sb.toString();
+        } catch (Exception e) {
+//            Log.e(TAG, "Hash error", e);
+            return String.valueOf(System.currentTimeMillis() % 10000);
+        }
+    }
+
+    private void enforceMaxIconsLimit() {
+        File[] files = gisDir.listFiles((dir, name) -> name.endsWith(".png"));
+        if (files == null || files.length < MAX_ICONS) return;
+
+        Arrays.sort(files, (f1, f2) -> Long.compare(f1.lastModified(), f2.lastModified()));
+
+        int deleteCount = files.length - (MAX_ICONS - 1);
+        for (int i = 0; i < deleteCount; i++) {
+            files[i].delete();
+        }
+    }
+
+    private void saveBitmap(Bitmap bitmap, File file) {
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+//            Log.d(TAG, "Saved icon: " + file.getName());
+        } catch (Exception e) {
+//            Log.e(TAG, "Save error", e);
+        }
+    }
+
+    private Bitmap drawableToBitmap(Drawable drawable) {
+        if (drawable instanceof BitmapDrawable) {
+            return ((BitmapDrawable) drawable).getBitmap();
+        }
+        Bitmap bmp = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+        return bmp;
+    }
+
+    public Bitmap addBackgroundToBitmap(Bitmap originalBitmap, int backgroundColor) {
+        if (originalBitmap == null) return null;
+
+        // Создаём новый Bitmap с тем же размером
+        Bitmap result = Bitmap.createBitmap(
+                originalBitmap.getWidth(),
+                originalBitmap.getHeight(),
+                Bitmap.Config.ARGB_8888
+        );
+
+        Canvas canvas = new Canvas(result);
+
+        // Рисуем фон
+        canvas.drawColor(backgroundColor);
+
+        // Рисуем оригинальный Bitmap поверх
+        canvas.drawBitmap(originalBitmap, 0, 0, null);
+
+        return result;
+    }
+
+    private static boolean copyIcon(Context context, String assetFilePath, String fileName) {
+        try {
+            File destFile = new File(gisDir, fileName);
+            try (InputStream in = context.getAssets().open(assetFilePath);
+                 FileOutputStream out = new FileOutputStream(destFile)) {
+                copyStream(in, out);
+            }
+            return true;
+
+        } catch (IOException e) {
+//            Log.e(TAG, "Legacy copy failed for " + fileName + ": " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    private static void copyStream(InputStream in, OutputStream out) throws IOException {
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        while ((bytesRead = in.read(buffer)) != -1) {
+            out.write(buffer, 0, bytesRead);
+        }
+        out.flush();
+    }
+
     private void logAllExtras(StatusBarNotification sbn, Notification notification, Bundle extras) {
         if (sbn == null || notification == null || extras == null) {
 //        Log.w("GisService", "logAllExtras: null argument");
@@ -352,147 +585,4 @@ public class GisNotificationService extends NotificationListenerService {
         }
     }
 
-//     ============ Вспомогательные методы ============
-
-    private String getIconFileName(String text, Bitmap bitmap) {
-        String baseName = getManeuverName(text);
-
-        if (!"nav".equals(baseName)) {
-            return baseName + ".png";
-        }
-
-        if (bitmap == null) {
-            return "nav_default.png";
-        }
-
-        String bitmapHash = getBitmapHash(bitmap);
-        return "nav_" + bitmapHash + ".png";
-    }
-
-    private String getBitmapHash(Bitmap bitmap) {
-        try {
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, 32, 32, false);
-            ByteBuffer buffer = ByteBuffer.allocate(scaled.getByteCount());
-            scaled.copyPixelsToBuffer(buffer);
-            byte[] pixels = buffer.array();
-
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(pixels);
-
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
-                sb.append(String.format("%02x", digest[i]));
-            }
-
-            if (scaled != bitmap) {
-                scaled.recycle();
-            }
-
-            return sb.toString();
-        } catch (Exception e) {
-//            Log.e(TAG, "Hash error", e);
-            return String.valueOf(System.currentTimeMillis() % 10000);
-        }
-    }
-
-    private String getManeuverName(String text) {
-        String t = text.toLowerCase();
-        if (t.contains("налево")) return "left";
-        if (t.contains("направо")) return "right";
-        if (t.contains("разворот")) return "uturn";
-        if (t.contains("круг") || t.contains("кольцо")) return "roundabout";
-        if (t.contains("съезд")) return "exit";
-        if (t.contains("въезд")) return "enter";
-        if (t.contains("прямо")) return "straight";
-        if (t.contains("слияние")) return "merge";
-        if (t.contains("пешеход")) return "pedestrian";
-        if (t.contains("парковка")) return "parking";
-        return "nav";
-    }
-
-    private void enforceMaxIconsLimit() {
-        File[] files = gisDir.listFiles((dir, name) -> name.endsWith(".png"));
-        if (files == null || files.length < MAX_ICONS) return;
-
-        Arrays.sort(files, (f1, f2) -> Long.compare(f1.lastModified(), f2.lastModified()));
-
-        int deleteCount = files.length - (MAX_ICONS - 1);
-        for (int i = 0; i < deleteCount; i++) {
-            files[i].delete();
-        }
-    }
-
-    private void saveBitmap(Bitmap bitmap, File file) {
-        try (FileOutputStream fos = new FileOutputStream(file)) {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-//            Log.d(TAG, "Saved icon: " + file.getName());
-        } catch (Exception e) {
-//            Log.e(TAG, "Save error", e);
-        }
-    }
-
-    private Bitmap drawableToBitmap(Drawable drawable) {
-        if (drawable instanceof BitmapDrawable) {
-            return ((BitmapDrawable) drawable).getBitmap();
-        }
-        Bitmap bmp = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bmp);
-        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-        drawable.draw(canvas);
-        return bmp;
-    }
-
-    // update
-//    private void checkUpdates() {
-//        UpdateChecker.checkForUpdate(this, "drauger", "GMediaHud", new UpdateChecker.UpdateCallback() {
-//            @Override
-//            public void onUpdateAvailable(UpdateInfo info) {
-//                showUpdateDialog(info);
-//            }
-//
-//            @Override
-//            public void onNoUpdate() {
-//  //                Log.d("Main", "No update available");
-//            }
-//
-//            @Override
-//            public void onError(String error) {
-//  //                Log.e("Main", "Update check error: " + error);
-//            }
-//        });
-//    }
-//    private void showUpdateDialog(UpdateInfo info) {
-//        new AlertDialog.Builder(this)
-//                .setTitle("Доступно обновление " + info.version)
-//                .setMessage(info.changelog)
-//                .setPositiveButton("Обновить", (d, w) -> startDownload(info))
-//                .setNegativeButton("Позже", null)
-//                .show();
-//    }
-
-//    private void startDownload(UpdateInfo info) {
-//        ProgressDialog progress = new ProgressDialog(this);
-//        progress.setMessage("Загрузка...");
-//        progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-//        progress.show();
-//
-//        UpdateDownloader.download(this, info, new UpdateDownloader.DownloadCallback() {
-//            @Override
-//            public void onProgress(int percent) {
-//                progress.setProgress(percent);
-//            }
-//
-//            @Override
-//            public void onComplete(File apkFile) {
-//                progress.dismiss();
-//                UpdateDownloader.installApk(GisNotificationService.this, apkFile);
-//            }
-//
-//            @Override
-//            public void onError(String error) {
-//                progress.dismiss();
-//                Toast.makeText(GisNotificationService.this, "Ошибка: " + error, Toast.LENGTH_LONG).show();
-//            }
-//        });
-//    }
 }
