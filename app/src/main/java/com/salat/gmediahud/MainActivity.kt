@@ -1,12 +1,14 @@
 package com.salat.gmediahud
 
-import  android.Manifest
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -15,6 +17,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +29,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
@@ -69,17 +74,15 @@ import com.salat.gmediahud.ui.ValueSlider
 import com.salat.gmediahud.ui.theme.AppTheme
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.util.Locale
-
-import android.provider.Settings
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
 import java.io.File
+import java.util.Locale
 
 private const val DEFAULT_UPDATE_RATE = 1000
 private const val DEFAULT_MEDIA_SOURCE = 6
 private const val DEFAULT_NOTIFICATION_VOLUME = 90
+private const val DEFAULT_GIS_NOTIFICATION_DISTANCE = 500
+private const val DEFAULT_GIS_NOTIFICATION_TIMEOUT = 10
+private const val DEFAULT_AR_NOTIFICATION_TIMEOUT = 5
 private const val SUCHII_ES_PROVODNIK = "com.estrongs.android.pop"
 
 class MainActivity : ComponentActivity() {
@@ -95,6 +98,13 @@ class MainActivity : ComponentActivity() {
         )
 
         val ds = DataStoreManager(this)
+
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                    .setData(Uri.parse("package:" + getPackageName()))
+            )
+        }
 
         setContent {
             val uiScale = 1.5f
@@ -159,14 +169,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            checkPermissions()
-            checkNotificationAccess()
-
             AppTheme(
                 darkTheme = true
             ) {
                 val scope = rememberCoroutineScope()
                 val canAccessibility by GlobalState.canAccessibility.collectAsStateWithLifecycle()
+
+                val editor = getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE).edit()
+
                 var isNotificationServiceEnabled by remember {
                     mutableStateOf(context.isNotificationServiceEnabled())
                 }
@@ -184,14 +194,20 @@ class MainActivity : ComponentActivity() {
                 var arNotificationsEnabled by remember { mutableStateOf(false) }
                 var gisSoundEnabled by remember { mutableStateOf(false) }
                 var gisLogsEnabled by remember { mutableStateOf(false) }
+                var gisNotificationsDistance by remember { mutableIntStateOf(DEFAULT_GIS_NOTIFICATION_DISTANCE) }
+                var gisNotificationsTimeout by remember { mutableIntStateOf(DEFAULT_GIS_NOTIFICATION_TIMEOUT) }
+                var arNotificationsTimeout by remember { mutableIntStateOf(DEFAULT_AR_NOTIFICATION_TIMEOUT) }
+
                 LaunchedEffect(true) {
+                    checkPermissions()
+                    checkNotificationAccess()
+
                     updateRate =
                         ds.getValueFlow(Prefs.UPDATE_RATE).firstOrNull() ?: DEFAULT_UPDATE_RATE
                     mediaSource =
                         ds.getValueFlow(Prefs.MEDIA_SOURCE).firstOrNull() ?: DEFAULT_MEDIA_SOURCE
                     notificationVolume =
-                        ds.getValueFlow(Prefs.NOTIFICATION_VOLUME).firstOrNull()
-                            ?: DEFAULT_NOTIFICATION_VOLUME
+                        ds.getValueFlow(Prefs.NOTIFICATION_VOLUME).firstOrNull() ?: DEFAULT_NOTIFICATION_VOLUME
                     isEnabled =
                         ds.getValueFlow(Prefs.MEDIA_DATA_SYNC_ENABLED).firstOrNull() ?: false
                     forceUpdate =
@@ -203,23 +219,33 @@ class MainActivity : ComponentActivity() {
 
                     gisNotificationsEnabled =
                         ds.getValueFlow(Prefs.GIS_NOTIFICATIONS_ENABLED).firstOrNull() ?: false
-                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                        .edit().putBoolean("gis_enabled", gisNotificationsEnabled).apply()
+                    editor.putBoolean("gis_enabled", gisNotificationsEnabled)
 
                     arNotificationsEnabled =
                         ds.getValueFlow(Prefs.AR_NOTIFICATIONS_ENABLED).firstOrNull() ?: false
-                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                        .edit().putBoolean("ar_enabled", arNotificationsEnabled).apply()
+                    editor.putBoolean("ar_enabled", arNotificationsEnabled)
 
                     gisSoundEnabled =
                         ds.getValueFlow(Prefs.GIS_SOUND_ENABLED).firstOrNull() ?: false
-                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                        .edit().putBoolean("gis_sound_enabled", gisSoundEnabled).apply()
+                    editor.putBoolean("gis_sound_enabled", gisSoundEnabled)
 
                     gisLogsEnabled =
                         ds.getValueFlow(Prefs.GIS_LOGS_ENABLED).firstOrNull() ?: false
-                    getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                        .edit().putBoolean("gis_logs_enabled", gisLogsEnabled).apply()
+                    editor.putBoolean("gis_logs_enabled", gisLogsEnabled)
+
+                    gisNotificationsDistance =
+                        ds.getValueFlow(Prefs.GIS_NOTIFICATIONS_DISTANCE).firstOrNull() ?: DEFAULT_GIS_NOTIFICATION_DISTANCE
+                    editor.putInt("gis_notifications_distance", gisNotificationsDistance)
+
+                    gisNotificationsTimeout =
+                        ds.getValueFlow(Prefs.GIS_NOTIFICATIONS_TIMEOUT).firstOrNull() ?: DEFAULT_GIS_NOTIFICATION_TIMEOUT
+                    editor.putInt("gis_notifications_timeout", gisNotificationsTimeout)
+
+                    arNotificationsTimeout =
+                        ds.getValueFlow(Prefs.AR_NOTIFICATIONS_TIMEOUT).firstOrNull() ?: DEFAULT_AR_NOTIFICATION_TIMEOUT
+                    editor.putInt("ar_notifications_timeout", arNotificationsTimeout)
+
+                    editor.apply()
                 }
                 LaunchedEffect(true) {
                     if (!esExplorerStub) {
@@ -525,6 +551,7 @@ class MainActivity : ComponentActivity() {
 
                                 Spacer(Modifier.height(12.dp))
 
+                                // Navigation
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                     title = "Навигация",
@@ -538,8 +565,7 @@ class MainActivity : ComponentActivity() {
                                             ds.saveValue(Prefs.GIS_NOTIFICATIONS_ENABLED, enabled)
                                         }
                                         // Сохраняем в SharedPreferences для Java-сервиса
-                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                                            .edit().putBoolean("gis_enabled", enabled).apply()
+                                        editor.putBoolean("gis_enabled", enabled).apply()
 
                                         if (enabled) {
                                             val cn = ComponentName(this@MainActivity, GisNotificationService::class.java)
@@ -554,39 +580,71 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
 
-                                Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(24.dp))
 
-                                RenderSwitcher(
-                                    modifier = Modifier.padding(horizontal = 20.dp),
-                                    title = "Камеры",
-                                    subtitle = "Показывать предупреждения на панели приборов",
-                                    value = arNotificationsEnabled,
-                                    enable = true,
-                                    groupDivider = false,
-                                    onChange = { enabled ->
-                                        arNotificationsEnabled = enabled
+                                // Navigation notification distance
+                                val gisNotificationDistanceTitle = "Дистанция предупреждения о манёвре"
+                                Text(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 42.dp),
+                                    textAlign = TextAlign.Left,
+                                    text = "$gisNotificationDistanceTitle: $gisNotificationsDistance м",
+                                    color = AppTheme.colors.contentPrimary
+                                )
+                                ValueSlider(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 36.dp),
+                                    value = gisNotificationsDistance,
+                                    valueRange = 100..5000,
+                                    onValueChange = { newValue ->
+                                        gisNotificationsDistance = newValue
                                         scope.launch {
-                                            ds.saveValue(Prefs.AR_NOTIFICATIONS_ENABLED, enabled)
+                                            ds.saveValue(Prefs.GIS_NOTIFICATIONS_DISTANCE, newValue)
                                         }
                                         // Сохраняем в SharedPreferences для Java-сервиса
-                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                                            .edit().putBoolean("ar_enabled", enabled).apply()
+                                        editor.putInt("gis_notifications_distance", newValue).apply()
+                                    },
+                                    enabled = true,
+                                    defaultMark = DEFAULT_GIS_NOTIFICATION_DISTANCE,
+                                    step = 50
+                                )
 
-                                        if (enabled) {
-                                            val cn = ComponentName(this@MainActivity, GisNotificationService::class.java)
-                                            val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
-                                            if (flat == null || !flat.contains(cn.flattenToString())) {
-                                                Toast.makeText(this@MainActivity,
-                                                    "Включите доступ к уведомлениям",
-                                                    Toast.LENGTH_LONG).show()
-                                                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                                            }
+                                Spacer(Modifier.height(24.dp))
+
+                                // Navigation notification timeout
+                                val gisNotificationTimeoutTitle = "Задержка скрытия предупреждения о манёвре"
+                                Text(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 42.dp),
+                                    textAlign = TextAlign.Left,
+                                    text = "$gisNotificationTimeoutTitle: $gisNotificationsTimeout с",
+                                    color = AppTheme.colors.contentPrimary
+                                )
+                                ValueSlider(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 36.dp),
+                                    value = gisNotificationsTimeout,
+                                    valueRange = 0..50,
+                                    onValueChange = { newValue ->
+                                        gisNotificationsTimeout = newValue
+                                        scope.launch {
+                                            ds.saveValue(Prefs.GIS_NOTIFICATIONS_TIMEOUT, newValue)
                                         }
-                                    }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        editor.putInt("gis_notifications_timeout", newValue).apply()
+                                    },
+                                    enabled = true,
+                                    defaultMark = DEFAULT_GIS_NOTIFICATION_TIMEOUT,
+                                    step = 1
                                 )
 
                                 Spacer(Modifier.height(12.dp))
 
+                                // Navigation sound
                                 RenderSwitcher(
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                     title = "Звук навигации",
@@ -600,9 +658,70 @@ class MainActivity : ComponentActivity() {
                                             ds.saveValue(Prefs.GIS_SOUND_ENABLED, enabled)
                                         }
                                         // Сохраняем в SharedPreferences для Java-сервиса
-                                        getSharedPreferences("GisServicePrefs", Context.MODE_PRIVATE)
-                                            .edit().putBoolean("gis_sound_enabled", enabled).apply()
+                                        editor.putBoolean("gis_sound_enabled", enabled).apply()
                                     }
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // Cameras
+                                RenderSwitcher(
+                                    modifier = Modifier.padding(horizontal = 20.dp),
+                                    title = "Камеры",
+                                    subtitle = "Показывать предупреждения на панели приборов",
+                                    value = arNotificationsEnabled,
+                                    enable = true,
+                                    groupDivider = false,
+                                    onChange = { enabled ->
+                                        arNotificationsEnabled = enabled
+                                        scope.launch {
+                                            ds.saveValue(Prefs.AR_NOTIFICATIONS_ENABLED, enabled)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        editor.putBoolean("ar_enabled", enabled).apply()
+
+                                        if (enabled) {
+                                            val cn = ComponentName(this@MainActivity, GisNotificationService::class.java)
+                                            val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                                            if (flat == null || !flat.contains(cn.flattenToString())) {
+                                                Toast.makeText(this@MainActivity,
+                                                    "Включите доступ к уведомлениям",
+                                                    Toast.LENGTH_LONG).show()
+                                                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                            }
+                                        }
+                                    }
+                                )
+
+                                Spacer(Modifier.height(24.dp))
+
+                                // Camera notification timeout
+                                val arNotificationTimeoutTitle = "Задержка скрытия предупреждения о камере"
+                                Text(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 42.dp),
+                                    textAlign = TextAlign.Left,
+                                    text = "$arNotificationTimeoutTitle: $arNotificationsTimeout с",
+                                    color = AppTheme.colors.contentPrimary
+                                )
+                                ValueSlider(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 36.dp),
+                                    value = arNotificationsTimeout,
+                                    valueRange = 0..50,
+                                    onValueChange = { newValue ->
+                                        arNotificationsTimeout = newValue
+                                        scope.launch {
+                                            ds.saveValue(Prefs.AR_NOTIFICATIONS_TIMEOUT, newValue)
+                                        }
+                                        // Сохраняем в SharedPreferences для Java-сервиса
+                                        editor.putInt("ar_notifications_timeout", newValue).apply()
+                                    },
+                                    enabled = true,
+                                    defaultMark = DEFAULT_AR_NOTIFICATION_TIMEOUT,
+                                    step = 1
                                 )
 
                                 /*Spacer(Modifier.height(12.dp))

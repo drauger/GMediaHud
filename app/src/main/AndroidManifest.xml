@@ -46,16 +46,6 @@
         </activity>
 
         <service
-            android:name=".MyNotificationListenerService"
-            android:exported="true"
-            android:label="My Notification Listener"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
-        <service
             android:name=".BootAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

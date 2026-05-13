@@ -245,7 +245,7 @@ class BootAccessibilityService : AccessibilityService() {
             if (mediaSessionManager == null) {
                 mediaSessionManager =
                     getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
-                componentName = ComponentName(this, MyNotificationListenerService::class.java)
+                componentName = ComponentName(this, GisNotificationService::class.java)
             }
         } catch (e: Exception) {
             Timber.e(e)

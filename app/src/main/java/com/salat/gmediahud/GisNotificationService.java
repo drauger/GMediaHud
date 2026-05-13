@@ -67,6 +67,8 @@ public class GisNotificationService extends NotificationListenerService {
     private static final String TARGET_PACKAGE = "com.salat.gmediahud";
 
     private int DISTANCE_LIMIT = 500;
+    private int GIS_TIMEOUT = 10;
+    private int AR_TIMEOUT = 5;
 
     private static File gisDir;
     private final Map<String, String> activeGisNotifications = new HashMap<>();
@@ -83,11 +85,6 @@ public class GisNotificationService extends NotificationListenerService {
     @Override
     public void onCreate() {
         super.onCreate();
-
-        if (!getPackageManager().canRequestPackageInstalls()) {
-            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                    .setData(Uri.parse("package:" + getPackageName())));
-        }
 
         registerNavigationReceiver();
 
@@ -164,8 +161,14 @@ public class GisNotificationService extends NotificationListenerService {
                 subtitle = text;
                 distance = Integer.parseInt((subtitle.split(" ", 2))[0].trim());
 
-                if (distance <= DISTANCE_LIMIT && !subtitle.contains("км"))
-                    createNotification("ya");
+                if (subtitle.contains("км"))
+                    distance *= 1000;
+
+                DISTANCE_LIMIT = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt("gis_notifications_distance", 500);
+
+                if (distance > DISTANCE_LIMIT) return;
+
+                createNotification("ya");
             }
 
             @Override
@@ -255,8 +258,10 @@ public class GisNotificationService extends NotificationListenerService {
                     params += ",source=6,toast=0,tag=";
                     params += tag;
 
+                    AR_TIMEOUT = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt("ar_notifications_timeout", 5);
+
                     // Отправляем broadcast в GMediaHUD
-                    sendShowCommand(title, distance + " м", iconFile.getAbsolutePath(), 5, params);
+                    sendShowCommand(title, distance + " м", iconFile.getAbsolutePath(), AR_TIMEOUT, params);
                 }
                 else {
                     sendHideCommand("antiradar");
@@ -282,7 +287,12 @@ public class GisNotificationService extends NotificationListenerService {
         title = parts.length > 1 ? parts[1].trim() : " ";
         distance = Integer.parseInt((subtitle.split(" ", 2))[0].trim());
 
-        if (distance > DISTANCE_LIMIT || subtitle.contains("км")) return;
+        if (subtitle.contains("км"))
+            distance *= 1000;
+
+        DISTANCE_LIMIT = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt("gis_notifications_distance", 500);
+
+        if (distance > DISTANCE_LIMIT) return;
 
         Icon largeIcon = notification.getLargeIcon();
         if (largeIcon != null) {
@@ -337,8 +347,10 @@ public class GisNotificationService extends NotificationListenerService {
         params += ",source=6,toast=0,tag=";
         params += tag;
 
+        GIS_TIMEOUT = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getInt("gis_notifications_timeout", 10);
+
         // Отправляем broadcast в GMediaHUD
-        sendShowCommand(title, subtitle, iconFile.getAbsolutePath(), 10, params);
+        sendShowCommand(title, subtitle, iconFile.getAbsolutePath(), GIS_TIMEOUT, params);
     }
 
     private void sendShowCommand(String title, String subtitle, String iconPath, int duration, String params) {
